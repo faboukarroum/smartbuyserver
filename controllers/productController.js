@@ -1,12 +1,47 @@
 const asyncHandler = require('express-async-handler');
 const Product = require('../models/Product');
 
-// @desc    Fetch all products
+// @desc    Fetch all products with pagination and filtering
 // @route   GET /api/products
 // @access  Public
 const getProducts = asyncHandler(async (req, res) => {
-  const products = await Product.find({});
-  res.json(products);
+  const pageSize = Number(req.query.pageSize) || 20;
+  const page = Number(req.query.pageNumber) || 1;
+
+  const keyword = req.query.keyword
+    ? {
+        name: {
+          $regex: req.query.keyword,
+          $options: 'i',
+        },
+      }
+    : {};
+
+  const category = req.query.category && req.query.category !== 'All'
+    ? {
+        category: {
+          $regex: req.query.category,
+          $options: 'i',
+        },
+      }
+    : {};
+
+  const sortOption = {};
+  if (req.query.sortBy === 'price-low') {
+    sortOption.price = 1;
+  } else if (req.query.sortBy === 'price-high') {
+    sortOption.price = -1;
+  } else {
+    sortOption.createdAt = -1; // Default to newest
+  }
+
+  const count = await Product.countDocuments({ ...keyword, ...category });
+  const products = await Product.find({ ...keyword, ...category })
+    .sort(sortOption)
+    .limit(pageSize)
+    .skip(pageSize * (page - 1));
+
+  res.json({ products, page, pages: Math.ceil(count / pageSize), count });
 });
 
 // @desc    Fetch single product

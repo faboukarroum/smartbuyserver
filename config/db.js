@@ -6,6 +6,8 @@ const connectDB = async () => {
     console.log(`MongoDB Connected: ${conn.connection.host}`);
   } catch (error) {
     console.error(`Error: ${error.message}`);
+    console.error('Make sure MongoDB is running on your machine.');
+    console.error(`Attempted connection URI: ${process.env.MONGO_URI}`);
     process.exit(1);
   }
 };
