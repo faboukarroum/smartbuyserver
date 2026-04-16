@@ -77,13 +77,27 @@ const deleteProduct = asyncHandler(async (req, res) => {
 // @route   POST /api/products
 // @access  Private/Admin
 const createProduct = asyncHandler(async (req, res) => {
-  const { name, price, description, image, category, stock, isNew, details } = req.body;
+  const {
+    name,
+    price,
+    description,
+    image,
+    images = [],
+    category,
+    stock,
+    isNew,
+    details,
+  } = req.body;
+
+  const galleryImages = Array.isArray(images) ? images.filter(Boolean) : [];
+  const coverImage = image || galleryImages[0] || '';
 
   const product = new Product({
     name,
     price,
     user: req.user._id,
-    image,
+    image: coverImage,
+    images: galleryImages,
     category,
     stock,
     description,
@@ -99,15 +113,29 @@ const createProduct = asyncHandler(async (req, res) => {
 // @route   PUT /api/products/:id
 // @access  Private/Admin
 const updateProduct = asyncHandler(async (req, res) => {
-  const { name, price, description, image, category, stock, isNew, details } = req.body;
+  const {
+    name,
+    price,
+    description,
+    image,
+    images,
+    category,
+    stock,
+    isNew,
+    details,
+  } = req.body;
 
   const product = await Product.findById(req.params.id);
 
   if (product) {
+    const galleryImages = Array.isArray(images) ? images.filter(Boolean) : product.images;
+    const coverImage = image || galleryImages[0] || product.image;
+
     product.name = name || product.name;
     product.price = price || product.price;
     product.description = description || product.description;
-    product.image = image || product.image;
+    product.image = coverImage;
+    product.images = galleryImages;
     product.category = category || product.category;
     product.stock = stock || product.stock;
     product.isNew = isNew !== undefined ? isNew : product.isNew;
