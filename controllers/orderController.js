@@ -29,6 +29,7 @@ const addOrderItems = asyncHandler(async (req, res) => {
   }
 
   const canonicalItems = [];
+  const reservedItems = [];
 
   for (const item of orderItems) {
     const productId = item.product || item._id || item.id;
@@ -50,6 +51,31 @@ const addOrderItems = asyncHandler(async (req, res) => {
       res.status(400);
       throw new Error(`Only ${product.stock} left for ${product.name}`);
     }
+
+    const reservation = await Product.updateOne(
+      { _id: product._id, stock: { $gte: qty } },
+      { $inc: { stock: -qty } }
+    );
+
+    if (reservation.modifiedCount !== 1) {
+      for (const reservedItem of reservedItems) {
+        await Product.updateOne(
+          { _id: reservedItem.product },
+          { $inc: { stock: reservedItem.qty } }
+        );
+      }
+
+      const latestProduct = await Product.findById(product._id);
+      const availableStock = latestProduct?.stock ?? 0;
+
+      res.status(400);
+      throw new Error(`Only ${availableStock} left for ${product.name}`);
+    }
+
+    reservedItems.push({
+      product: product._id,
+      qty,
+    });
 
     canonicalItems.push({
       name: product.name,
@@ -79,13 +105,19 @@ const addOrderItems = asyncHandler(async (req, res) => {
     totalPrice,
   });
 
-  const createdOrder = await order.save();
+  let createdOrder;
 
-  for (const item of canonicalItems) {
-    await Product.updateOne(
-      { _id: item.product },
-      { $inc: { stock: -item.qty } }
-    );
+  try {
+    createdOrder = await order.save();
+  } catch (error) {
+    for (const reservedItem of reservedItems) {
+      await Product.updateOne(
+        { _id: reservedItem.product },
+        { $inc: { stock: reservedItem.qty } }
+      );
+    }
+
+    throw error;
   }
 
   res.status(201).json(createdOrder);
