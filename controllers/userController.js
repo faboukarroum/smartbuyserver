@@ -123,6 +123,11 @@ const getUsers = asyncHandler(async (req, res) => {
 // @route   DELETE /api/users/:id
 // @access  Private/Admin
 const deleteUser = asyncHandler(async (req, res) => {
+  if (req.user._id.toString() === req.params.id) {
+    res.status(400);
+    throw new Error('You cannot delete your own admin account');
+  }
+
   const user = await User.findById(req.params.id);
 
   if (user) {
