@@ -131,15 +131,15 @@ const updateProduct = asyncHandler(async (req, res) => {
     const galleryImages = Array.isArray(images) ? images.filter(Boolean) : product.images;
     const coverImage = image || galleryImages[0] || product.image;
 
-    product.name = name || product.name;
-    product.price = price || product.price;
-    product.description = description || product.description;
+    product.name = name !== undefined ? name : product.name;
+    product.price = price !== undefined ? price : product.price;
+    product.description = description !== undefined ? description : product.description;
     product.image = coverImage;
     product.images = galleryImages;
-    product.category = category || product.category;
-    product.stock = stock || product.stock;
+    product.category = category !== undefined ? category : product.category;
+    product.stock = stock !== undefined ? stock : product.stock;
     product.isNew = isNew !== undefined ? isNew : product.isNew;
-    product.details = details || product.details;
+    product.details = details !== undefined ? details : product.details;
 
     const updatedProduct = await product.save();
     res.json(updatedProduct);

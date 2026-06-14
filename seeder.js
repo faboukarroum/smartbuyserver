@@ -521,7 +521,7 @@ const importData = async () => {
       shippingAddress: {
         address: 'Mar Mikhael Street',
         city: 'Beirut',
-        postalCode: '1100',
+        deliveryNote: 'Call before delivery. Building entrance is beside the pharmacy.',
         fullName: 'John Doe',
       },
       paymentMethod: 'Cash on Delivery',

@@ -1,36 +1,94 @@
 const asyncHandler = require('express-async-handler');
 const Order = require('../models/Order');
+const Product = require('../models/Product');
 
 // @desc    Create new order
 // @route   POST /api/orders
-// @access  Private
+// @access  Public, optionally authenticated
 const addOrderItems = asyncHandler(async (req, res) => {
   const {
     orderItems,
     shippingAddress,
     paymentMethod,
+    guestCustomer = {},
+  } = req.body;
+
+  if (!Array.isArray(orderItems) || orderItems.length === 0) {
+    res.status(400);
+    throw new Error('No order items');
+  }
+
+  if (!shippingAddress?.fullName || !shippingAddress?.address || !shippingAddress?.city || !shippingAddress?.deliveryNote) {
+    res.status(400);
+    throw new Error('Delivery information is required');
+  }
+
+  if (!guestCustomer.phone) {
+    res.status(400);
+    throw new Error('Phone number is required');
+  }
+
+  const canonicalItems = [];
+
+  for (const item of orderItems) {
+    const productId = item.product || item._id || item.id;
+    const qty = Number(item.qty || item.quantity || 0);
+
+    if (!productId || !Number.isInteger(qty) || qty < 1) {
+      res.status(400);
+      throw new Error('Invalid order item');
+    }
+
+    const product = await Product.findById(productId);
+
+    if (!product) {
+      res.status(404);
+      throw new Error('One or more products were not found');
+    }
+
+    if (product.stock < qty) {
+      res.status(400);
+      throw new Error(`Only ${product.stock} left for ${product.name}`);
+    }
+
+    canonicalItems.push({
+      name: product.name,
+      qty,
+      image: product.image,
+      price: product.price,
+      product: product._id,
+    });
+  }
+
+  const itemsPrice = canonicalItems.reduce((sum, item) => sum + item.price * item.qty, 0);
+  const shippingPrice = 0;
+  const totalPrice = itemsPrice + shippingPrice;
+
+  const order = new Order({
+    orderItems: canonicalItems,
+    user: req.user?._id,
+    guestCustomer: {
+      fullName: guestCustomer.fullName || shippingAddress.fullName,
+      phone: guestCustomer.phone,
+      email: guestCustomer.email || '',
+    },
+    shippingAddress,
+    paymentMethod: paymentMethod || 'Cash on Delivery',
     itemsPrice,
     shippingPrice,
     totalPrice,
-  } = req.body;
+  });
 
-  if (orderItems && orderItems.length === 0) {
-    res.status(400);
-    throw new Error('No order items');
-  } else {
-    const order = new Order({
-      orderItems,
-      user: req.user._id,
-      shippingAddress,
-      paymentMethod,
-      itemsPrice,
-      shippingPrice,
-      totalPrice,
-    });
+  const createdOrder = await order.save();
 
-    const createdOrder = await order.save();
-    res.status(201).json(createdOrder);
+  for (const item of canonicalItems) {
+    await Product.updateOne(
+      { _id: item.product },
+      { $inc: { stock: -item.qty } }
+    );
   }
+
+  res.status(201).json(createdOrder);
 });
 
 // @desc    Get order by ID
@@ -104,7 +162,7 @@ const getMyOrders = asyncHandler(async (req, res) => {
 // @route   GET /api/orders
 // @access  Private/Admin
 const getOrders = asyncHandler(async (req, res) => {
-  const orders = await Order.find({}).populate('user', 'id name');
+  const orders = await Order.find({}).populate('user', 'id name email');
   res.json(orders);
 });
 
