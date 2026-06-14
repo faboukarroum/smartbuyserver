@@ -80,6 +80,7 @@ const createProduct = asyncHandler(async (req, res) => {
   const {
     name,
     price,
+    priceLbp,
     description,
     image,
     images = [],
@@ -95,6 +96,7 @@ const createProduct = asyncHandler(async (req, res) => {
   const product = new Product({
     name,
     price,
+    priceLbp: priceLbp === '' || priceLbp === null || priceLbp === undefined ? null : Number(priceLbp),
     user: req.user._id,
     image: coverImage,
     images: galleryImages,
@@ -116,6 +118,7 @@ const updateProduct = asyncHandler(async (req, res) => {
   const {
     name,
     price,
+    priceLbp,
     description,
     image,
     images,
@@ -133,6 +136,9 @@ const updateProduct = asyncHandler(async (req, res) => {
 
     product.name = name !== undefined ? name : product.name;
     product.price = price !== undefined ? price : product.price;
+    product.priceLbp = priceLbp !== undefined
+      ? (priceLbp === '' || priceLbp === null ? null : Number(priceLbp))
+      : product.priceLbp;
     product.description = description !== undefined ? description : product.description;
     product.image = coverImage;
     product.images = galleryImages;

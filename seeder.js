@@ -4,6 +4,7 @@ const connectDB = require('./config/db');
 const Product = require('./models/Product');
 const User = require('./models/User');
 const Order = require('./models/Order');
+const AppSettings = require('./models/AppSettings');
 
 dotenv.config();
 
@@ -487,6 +488,7 @@ const importData = async () => {
     await Order.deleteMany();
     await Product.deleteMany();
     await User.deleteMany();
+    await AppSettings.deleteMany();
 
     const createdUsers = await User.insertMany(users);
     const regularUser = createdUsers[1]._id;
@@ -533,6 +535,10 @@ const importData = async () => {
     };
 
     await Order.create(sampleOrder);
+    await AppSettings.create({
+      key: 'global',
+      usdToLbpRate: 89500,
+    });
 
     console.log(`Data Imported Successfully! Total Products: ${createdProducts.length}`);
     process.exit();
@@ -549,6 +555,7 @@ const destroyData = async () => {
     await Order.deleteMany();
     await Product.deleteMany();
     await User.deleteMany();
+    await AppSettings.deleteMany();
 
     console.log('Data Destroyed!');
     process.exit();
