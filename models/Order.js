@@ -34,6 +34,11 @@ const orderSchema = mongoose.Schema(
       type: String,
       required: true,
     },
+    receiptToken: {
+      type: String,
+      required: true,
+      select: false,
+    },
     paymentResult: {
       id: { type: String },
       status: { type: String },

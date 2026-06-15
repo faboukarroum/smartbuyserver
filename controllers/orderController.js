@@ -1,6 +1,7 @@
 const asyncHandler = require('express-async-handler');
 const Order = require('../models/Order');
 const Product = require('../models/Product');
+const crypto = require('crypto');
 
 const FULFILLMENT_STATUSES = ['ready_for_pickup', 'picked_up', 'delivered'];
 
@@ -91,6 +92,7 @@ const addOrderItems = asyncHandler(async (req, res) => {
   const itemsPrice = canonicalItems.reduce((sum, item) => sum + item.price * item.qty, 0);
   const shippingPrice = 0;
   const totalPrice = itemsPrice + shippingPrice;
+  const receiptToken = crypto.randomBytes(24).toString('hex');
 
   const order = new Order({
     orderItems: canonicalItems,
@@ -105,6 +107,7 @@ const addOrderItems = asyncHandler(async (req, res) => {
     itemsPrice,
     shippingPrice,
     totalPrice,
+    receiptToken,
   });
 
   let createdOrder;
@@ -122,7 +125,27 @@ const addOrderItems = asyncHandler(async (req, res) => {
     throw error;
   }
 
-  res.status(201).json(createdOrder);
+  res.status(201).json({
+    ...createdOrder.toObject(),
+    receiptToken,
+  });
+});
+
+// @desc    Get order receipt using receipt token
+// @route   GET /api/orders/:id/receipt/:receiptToken
+// @access  Public
+const getOrderReceipt = asyncHandler(async (req, res) => {
+  const order = await Order.findOne({
+    _id: req.params.id,
+    receiptToken: req.params.receiptToken,
+  }).populate('user', 'name email');
+
+  if (order) {
+    res.json(order);
+  } else {
+    res.status(404);
+    throw new Error('Receipt not found');
+  }
 });
 
 // @desc    Get order by ID
@@ -237,6 +260,7 @@ const getOrders = asyncHandler(async (req, res) => {
 
 module.exports = {
   addOrderItems,
+  getOrderReceipt,
   getOrderById,
   updateOrderToPaid,
   updateOrderToDelivered,
