@@ -63,6 +63,15 @@ const orderSchema = mongoose.Schema(
     paidAt: {
       type: Date,
     },
+    fulfillmentStatus: {
+      type: String,
+      required: true,
+      enum: ['ready_for_pickup', 'picked_up', 'delivered'],
+      default: 'ready_for_pickup',
+    },
+    fulfillmentStatusUpdatedAt: {
+      type: Date,
+    },
     isDelivered: {
       type: Boolean,
       required: true,

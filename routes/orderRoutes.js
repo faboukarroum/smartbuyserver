@@ -5,6 +5,7 @@ const {
   getOrderById,
   updateOrderToPaid,
   updateOrderToDelivered,
+  updateOrderFulfillmentStatus,
   getMyOrders,
   getOrders,
 } = require('../controllers/orderController');
@@ -15,5 +16,6 @@ router.route('/myorders').get(protect, getMyOrders);
 router.route('/:id').get(protect, getOrderById);
 router.route('/:id/pay').put(protect, admin, updateOrderToPaid);
 router.route('/:id/deliver').put(protect, admin, updateOrderToDelivered);
+router.route('/:id/fulfillment-status').put(protect, admin, updateOrderFulfillmentStatus);
 
 module.exports = router;

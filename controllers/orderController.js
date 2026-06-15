@@ -2,6 +2,8 @@ const asyncHandler = require('express-async-handler');
 const Order = require('../models/Order');
 const Product = require('../models/Product');
 
+const FULFILLMENT_STATUSES = ['ready_for_pickup', 'picked_up', 'delivered'];
+
 // @desc    Create new order
 // @route   POST /api/orders
 // @access  Public, optionally authenticated
@@ -171,8 +173,43 @@ const updateOrderToDelivered = asyncHandler(async (req, res) => {
   const order = await Order.findById(req.params.id);
 
   if (order) {
+    order.fulfillmentStatus = 'delivered';
+    order.fulfillmentStatusUpdatedAt = Date.now();
     order.isDelivered = true;
     order.deliveredAt = Date.now();
+
+    const updatedOrder = await order.save();
+    res.json(updatedOrder);
+  } else {
+    res.status(404);
+    throw new Error('Order not found');
+  }
+});
+
+// @desc    Update order fulfillment status
+// @route   PUT /api/orders/:id/fulfillment-status
+// @access  Private/Admin
+const updateOrderFulfillmentStatus = asyncHandler(async (req, res) => {
+  const { fulfillmentStatus } = req.body;
+
+  if (!FULFILLMENT_STATUSES.includes(fulfillmentStatus)) {
+    res.status(400);
+    throw new Error('Invalid fulfillment status');
+  }
+
+  const order = await Order.findById(req.params.id);
+
+  if (order) {
+    order.fulfillmentStatus = fulfillmentStatus;
+    order.fulfillmentStatusUpdatedAt = Date.now();
+
+    if (fulfillmentStatus === 'delivered') {
+      order.isDelivered = true;
+      order.deliveredAt = order.deliveredAt || Date.now();
+    } else {
+      order.isDelivered = false;
+      order.deliveredAt = undefined;
+    }
 
     const updatedOrder = await order.save();
     res.json(updatedOrder);
@@ -203,6 +240,7 @@ module.exports = {
   getOrderById,
   updateOrderToPaid,
   updateOrderToDelivered,
+  updateOrderFulfillmentStatus,
   getMyOrders,
   getOrders,
 };
