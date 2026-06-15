@@ -175,9 +175,21 @@ const googleAuth = asyncHandler(async (req, res) => {
   let user = await User.findOne({ email });
 
   if (user) {
-    user.googleId = user.googleId || payload.sub;
-    user.authProvider = user.authProvider === 'local' ? 'local' : 'google';
-    await user.save();
+    let shouldSave = false;
+
+    if (!user.googleId) {
+      user.googleId = payload.sub;
+      shouldSave = true;
+    }
+
+    if (user.authProvider !== 'local' && user.authProvider !== 'google') {
+      user.authProvider = 'google';
+      shouldSave = true;
+    }
+
+    if (shouldSave) {
+      await user.save();
+    }
   } else {
     user = await User.create({
       name: payload.name || email.split('@')[0],
