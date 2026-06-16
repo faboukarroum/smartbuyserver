@@ -14,7 +14,23 @@ const addOrderItems = asyncHandler(async (req, res) => {
     shippingAddress,
     paymentMethod,
     guestCustomer = {},
+    clientOrderToken,
   } = req.body;
+  const normalizedClientOrderToken =
+    typeof clientOrderToken === 'string' && clientOrderToken.trim()
+      ? clientOrderToken.trim().slice(0, 120)
+      : undefined;
+
+  if (normalizedClientOrderToken) {
+    const existingOrder = await Order.findOne({ clientOrderToken: normalizedClientOrderToken }).select('+receiptToken');
+
+    if (existingOrder) {
+      return res.json({
+        ...existingOrder.toObject(),
+        receiptToken: existingOrder.receiptToken,
+      });
+    }
+  }
 
   if (!Array.isArray(orderItems) || orderItems.length === 0) {
     res.status(400);
@@ -108,6 +124,7 @@ const addOrderItems = asyncHandler(async (req, res) => {
     shippingPrice,
     totalPrice,
     receiptToken,
+    clientOrderToken: normalizedClientOrderToken,
   });
 
   let createdOrder;
@@ -120,6 +137,17 @@ const addOrderItems = asyncHandler(async (req, res) => {
         { _id: reservedItem.product },
         { $inc: { stock: reservedItem.qty } }
       );
+    }
+
+    if (error?.code === 11000 && normalizedClientOrderToken) {
+      const existingOrder = await Order.findOne({ clientOrderToken: normalizedClientOrderToken }).select('+receiptToken');
+
+      if (existingOrder) {
+        return res.json({
+          ...existingOrder.toObject(),
+          receiptToken: existingOrder.receiptToken,
+        });
+      }
     }
 
     throw error;
@@ -158,6 +186,15 @@ const getOrderById = asyncHandler(async (req, res) => {
   );
 
   if (order) {
+    const orderUserId = order.user?._id?.toString() || order.user?.toString();
+    const requesterId = req.user?._id?.toString();
+    const isAdmin = req.user?.role === 'admin';
+
+    if (!isAdmin && (!orderUserId || orderUserId !== requesterId)) {
+      res.status(403);
+      throw new Error('Not authorized to view this order');
+    }
+
     res.json(order);
   } else {
     res.status(404);
@@ -246,7 +283,7 @@ const updateOrderFulfillmentStatus = asyncHandler(async (req, res) => {
 // @route   GET /api/orders/myorders
 // @access  Private
 const getMyOrders = asyncHandler(async (req, res) => {
-  const orders = await Order.find({ user: req.user._id });
+  const orders = await Order.find({ user: req.user._id }).sort({ createdAt: -1 });
   res.json(orders);
 });
 

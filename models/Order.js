@@ -39,6 +39,12 @@ const orderSchema = mongoose.Schema(
       required: true,
       select: false,
     },
+    clientOrderToken: {
+      type: String,
+      unique: true,
+      sparse: true,
+      select: false,
+    },
     paymentResult: {
       id: { type: String },
       status: { type: String },
