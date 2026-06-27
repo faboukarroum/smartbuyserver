@@ -4,6 +4,7 @@ const Product = require('../models/Product');
 const { decryptSecret } = require('../utils/aiSettingsCrypto');
 const { getSettingsDocumentWithSecret } = require('./settingsController');
 const { researchLebanesePrices } = require('../services/aiMarketResearchService');
+const { lookupBarcode } = require('../services/barcodeLookupService');
 
 const normalizeBarcode = (value) => String(value || '').replace(/\D/g, '').trim();
 
@@ -61,6 +62,48 @@ const getSelectedFields = (fields) => {
 };
 
 const uniqueStrings = (items = []) => [...new Set(items.map((item) => String(item || '').trim()).filter(Boolean))];
+
+const mergeCandidates = (existing = [], incoming = [], key = 'value') => {
+  const seen = new Set();
+
+  return [...existing, ...incoming].filter((item) => {
+    const value = String(item?.[key] || '').trim().toLowerCase();
+
+    if (!value || seen.has(value)) {
+      return false;
+    }
+
+    seen.add(value);
+    return true;
+  });
+};
+
+const hasLookupData = (scannedProduct) =>
+  Boolean(
+    scannedProduct.nameCandidates?.length ||
+    scannedProduct.descriptionCandidates?.length ||
+    scannedProduct.detailsCandidates?.length ||
+    scannedProduct.imageCandidates?.length ||
+    scannedProduct.brand ||
+    scannedProduct.supplierSources?.length
+  );
+
+const applyLookupToScannedProduct = (scannedProduct, lookup) => {
+  if (!lookup?.found) {
+    return false;
+  }
+
+  scannedProduct.nameCandidates = mergeCandidates(scannedProduct.nameCandidates, lookup.nameCandidates);
+  scannedProduct.descriptionCandidates = mergeCandidates(scannedProduct.descriptionCandidates, lookup.descriptionCandidates);
+  scannedProduct.detailsCandidates = mergeCandidates(scannedProduct.detailsCandidates, lookup.detailsCandidates);
+  scannedProduct.imageCandidates = mergeCandidates(scannedProduct.imageCandidates, lookup.imageCandidates, 'url');
+  scannedProduct.supplierSources = mergeCandidates(scannedProduct.supplierSources, lookup.supplierSources, 'url');
+  scannedProduct.brand = scannedProduct.brand || lookup.brand || '';
+  scannedProduct.manufacturer = scannedProduct.manufacturer || lookup.manufacturer || '';
+  scannedProduct.category = scannedProduct.category || lookup.category || '';
+
+  return true;
+};
 
 const buildImportValues = (scannedProduct, values = {}) => ({
   name: values.name ?? getBestValue(scannedProduct.nameCandidates),
@@ -146,25 +189,37 @@ const scanProduct = asyncHandler(async (req, res) => {
   }).sort({ createdAt: -1 });
 
   if (duplicate) {
+    if (!hasLookupData(duplicate)) {
+      const lookup = await lookupBarcode(barcode).catch(() => ({ found: false }));
+      const enriched = applyLookupToScannedProduct(duplicate, lookup);
+
+      if (enriched) {
+        duplicate.updatedBy = req.user._id;
+        await duplicate.save();
+      }
+    }
+
     res.json({ scannedProduct: duplicate, duplicate: true });
     return;
   }
 
+  const lookup = await lookupBarcode(barcode).catch(() => ({ found: false }));
+
   const scannedProduct = await ScannedProduct.create({
     barcode,
-    nameCandidates: normalizeCandidateArray(req.body.nameCandidates, 'scan'),
-    descriptionCandidates: normalizeCandidateArray(req.body.descriptionCandidates, 'scan'),
-    detailsCandidates: normalizeCandidateArray(req.body.detailsCandidates, 'scan'),
-    imageCandidates: normalizeImageArray(req.body.imageCandidates, 'scan'),
-    brand: req.body.brand || '',
-    manufacturer: req.body.manufacturer || '',
-    category: req.body.category || '',
-    supplierSources: Array.isArray(req.body.supplierSources) ? req.body.supplierSources : [],
-    notes: req.body.notes || '',
+    nameCandidates: mergeCandidates(normalizeCandidateArray(req.body.nameCandidates, 'scan'), lookup.nameCandidates),
+    descriptionCandidates: mergeCandidates(normalizeCandidateArray(req.body.descriptionCandidates, 'scan'), lookup.descriptionCandidates),
+    detailsCandidates: mergeCandidates(normalizeCandidateArray(req.body.detailsCandidates, 'scan'), lookup.detailsCandidates),
+    imageCandidates: mergeCandidates(normalizeImageArray(req.body.imageCandidates, 'scan'), lookup.imageCandidates, 'url'),
+    brand: req.body.brand || lookup.brand || '',
+    manufacturer: req.body.manufacturer || lookup.manufacturer || '',
+    category: req.body.category || lookup.category || '',
+    supplierSources: mergeCandidates(Array.isArray(req.body.supplierSources) ? req.body.supplierSources : [], lookup.supplierSources, 'url'),
+    notes: req.body.notes || (lookup.found ? 'Barcode product details were found automatically.' : 'No product details were found automatically for this barcode.'),
     createdBy: req.user._id,
   });
 
-  res.status(201).json({ scannedProduct, duplicate: false });
+  res.status(201).json({ scannedProduct, duplicate: false, lookupFound: lookup.found });
 });
 
 // @desc    List scanned products
