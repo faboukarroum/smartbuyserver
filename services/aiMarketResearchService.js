@@ -1,5 +1,113 @@
 const OPENAI_RESPONSES_URL = 'https://api.openai.com/v1/responses';
 
+const priceResultSchema = {
+  type: 'object',
+  properties: {
+    sellerName: { type: 'string' },
+    listingTitle: { type: 'string' },
+    url: { type: 'string' },
+    price: { type: 'number' },
+    currency: { type: 'string' },
+    priceLbp: { type: ['number', 'null'] },
+    imageUrl: { type: 'string' },
+    matchConfidence: { type: 'number' },
+    matchNotes: { type: 'string' },
+    observedAt: { type: 'string' },
+  },
+  required: [
+    'sellerName',
+    'listingTitle',
+    'url',
+    'price',
+    'currency',
+    'priceLbp',
+    'imageUrl',
+    'matchConfidence',
+    'matchNotes',
+    'observedAt',
+  ],
+  additionalProperties: false,
+};
+
+const sourceSchema = {
+  type: 'object',
+  properties: {
+    name: { type: 'string' },
+    url: { type: 'string' },
+    notes: { type: 'string' },
+  },
+  required: ['name', 'url', 'notes'],
+  additionalProperties: false,
+};
+
+const officialImageSchema = {
+  type: 'object',
+  properties: {
+    url: { type: 'string' },
+    source: { type: 'string' },
+    confidence: { type: 'number' },
+  },
+  required: ['url', 'source', 'confidence'],
+  additionalProperties: false,
+};
+
+const marketResearchFormat = {
+  type: 'json_schema',
+  name: 'lebanese_market_price_research',
+  strict: true,
+  schema: {
+    type: 'object',
+    properties: {
+      summary: { type: 'string' },
+      marketPriceResults: {
+        type: 'array',
+        items: priceResultSchema,
+      },
+    },
+    required: ['summary', 'marketPriceResults'],
+    additionalProperties: false,
+  },
+};
+
+const officialVerificationFormat = {
+  type: 'json_schema',
+  name: 'official_supplier_verification',
+  strict: true,
+  schema: {
+    type: 'object',
+    properties: {
+      summary: { type: 'string' },
+      verifiedName: { type: 'string' },
+      verifiedDescription: { type: 'string' },
+      verifiedDetails: {
+        type: 'array',
+        items: { type: 'string' },
+      },
+      highResImages: {
+        type: 'array',
+        items: officialImageSchema,
+      },
+      brand: { type: 'string' },
+      manufacturer: { type: 'string' },
+      officialSources: {
+        type: 'array',
+        items: sourceSchema,
+      },
+    },
+    required: [
+      'summary',
+      'verifiedName',
+      'verifiedDescription',
+      'verifiedDetails',
+      'highResImages',
+      'brand',
+      'manufacturer',
+      'officialSources',
+    ],
+    additionalProperties: false,
+  },
+};
+
 const extractResponseText = (data) => {
   if (typeof data?.output_text === 'string') {
     return data.output_text;
@@ -30,7 +138,12 @@ const parseJsonText = (text) => {
     ? cleaned.slice(firstBrace, lastBrace + 1)
     : cleaned;
 
-  return JSON.parse(jsonText);
+  try {
+    return JSON.parse(jsonText);
+  } catch (error) {
+    const preview = cleaned.slice(0, 80).replace(/\s+/g, ' ');
+    throw new Error(`AI response was not valid JSON${preview ? `: ${preview}` : ''}`);
+  }
 };
 
 const normalizeConfidence = (value) => {
@@ -196,6 +309,7 @@ const researchLebanesePrices = async ({ apiKey, aiSettings, scannedProduct }) =>
       model: aiSettings.model || 'gpt-4.1-mini',
       tools: [{ type: 'web_search', external_web_access: true }],
       tool_choice: 'required',
+      text: { format: marketResearchFormat },
       input: [
         {
           role: 'system',
@@ -253,6 +367,7 @@ const verifyOfficialSupplierDetails = async ({ apiKey, aiSettings, scannedProduc
       model: aiSettings.model || 'gpt-4.1-mini',
       tools: [{ type: 'web_search', external_web_access: true }],
       tool_choice: 'required',
+      text: { format: officialVerificationFormat },
       input: [
         {
           role: 'system',
