@@ -146,6 +146,50 @@ const parseJsonText = (text) => {
   }
 };
 
+const compactString = (value) => String(value || '').trim();
+
+const normalizePromptCandidates = (items = [], valueKey = 'value') => {
+  if (!Array.isArray(items)) {
+    return [];
+  }
+
+  return items
+    .map((item) => ({
+      value: compactString(item?.[valueKey]),
+      source: compactString(item?.source),
+      confidence: item?.confidence ?? null,
+    }))
+    .filter((item) => item.value);
+};
+
+const normalizePromptSources = (items = []) => {
+  if (!Array.isArray(items)) {
+    return [];
+  }
+
+  return items
+    .map((item) => ({
+      name: compactString(item?.name),
+      url: compactString(item?.url),
+      notes: compactString(item?.notes),
+    }))
+    .filter((item) => item.url || item.name || item.notes);
+};
+
+const buildScannedProductContext = (scannedProduct) => ({
+  barcode: compactString(scannedProduct.barcode),
+  brand: compactString(scannedProduct.brand),
+  manufacturer: compactString(scannedProduct.manufacturer),
+  category: compactString(scannedProduct.category),
+  notes: compactString(scannedProduct.notes),
+  officialVerificationSummary: compactString(scannedProduct.officialVerificationSummary),
+  nameCandidates: normalizePromptCandidates(scannedProduct.nameCandidates),
+  descriptionCandidates: normalizePromptCandidates(scannedProduct.descriptionCandidates),
+  detailCandidates: normalizePromptCandidates(scannedProduct.detailsCandidates),
+  imageCandidates: normalizePromptCandidates(scannedProduct.imageCandidates, 'url'),
+  lookupAndSupplierSources: normalizePromptSources(scannedProduct.supplierSources),
+});
+
 const normalizeConfidence = (value) => {
   const number = Number(value);
 
@@ -286,16 +330,10 @@ const testOpenAIConnection = async ({ apiKey, model }) => {
 
 const researchLebanesePrices = async ({ apiKey, aiSettings, scannedProduct }) => {
   const maxResults = Number(aiSettings.maxResultsPerProduct) || 8;
-  const details = (scannedProduct.detailsCandidates || []).map((item) => item.value).filter(Boolean);
-  const names = (scannedProduct.nameCandidates || []).map((item) => item.value).filter(Boolean);
+  const productContext = buildScannedProductContext(scannedProduct);
 
   const prompt = {
-    barcode: scannedProduct.barcode,
-    productNames: names,
-    brand: scannedProduct.brand,
-    manufacturer: scannedProduct.manufacturer,
-    category: scannedProduct.category,
-    details,
+    product: productContext,
     market: aiSettings.defaultMarket || 'Lebanon',
     languages: aiSettings.languages || 'both',
     preferredDomains: aiSettings.preferredDomains || [],
@@ -315,6 +353,8 @@ const researchLebanesePrices = async ({ apiKey, aiSettings, scannedProduct }) =>
           role: 'system',
           content: [
             'You research Lebanese ecommerce prices for admin catalog verification.',
+            'Use all product context from the barcode lookup and official verification, including candidate names, descriptions, specs, images, source URLs, brand, manufacturer, category, and notes.',
+            'Treat lookup sources such as Open Food Facts, Open Products Facts, and Open Beauty Facts as product-identification clues, then search seller listings for the best matching product.',
             'Return only valid JSON with keys summary and marketPriceResults.',
             'marketPriceResults must be an array of objects with sellerName, listingTitle, url, price, currency, priceLbp, imageUrl, matchConfidence, matchNotes, observedAt.',
             'Only include results with a real source URL and numeric price.',
@@ -344,18 +384,10 @@ const researchLebanesePrices = async ({ apiKey, aiSettings, scannedProduct }) =>
 };
 
 const verifyOfficialSupplierDetails = async ({ apiKey, aiSettings, scannedProduct }) => {
-  const details = (scannedProduct.detailsCandidates || []).map((item) => item.value).filter(Boolean);
-  const names = (scannedProduct.nameCandidates || []).map((item) => item.value).filter(Boolean);
-  const imageUrls = (scannedProduct.imageCandidates || []).map((item) => item.url).filter(Boolean);
+  const productContext = buildScannedProductContext(scannedProduct);
 
   const prompt = {
-    barcode: scannedProduct.barcode,
-    productNames: names,
-    brand: scannedProduct.brand,
-    manufacturer: scannedProduct.manufacturer,
-    category: scannedProduct.category,
-    existingDetails: details,
-    existingImageUrls: imageUrls,
+    product: productContext,
     languages: aiSettings.languages || 'both',
     preferredDomains: aiSettings.preferredDomains || [],
     blockedDomains: aiSettings.blockedDomains || [],
@@ -373,7 +405,10 @@ const verifyOfficialSupplierDetails = async ({ apiKey, aiSettings, scannedProduc
           role: 'system',
           content: [
             'You verify product catalog data only against official supplier, official brand, official manufacturer, or official distributor pages.',
+            'Use every clue in the product context from the initial barcode lookup, including candidate names, descriptions, specs, images, source URLs, source names, confidence, brand, manufacturer, category, and notes.',
+            'If the barcode lookup identified only a generic or partial product name, combine that name with the barcode, package details, country, ingredient/material/category clues, and any source-page data to find the likely official product.',
             'Do not use marketplace listings, reseller pages, social media posts, review blogs, or generic barcode databases as official verification sources.',
+            'Generic barcode databases and lookup sources are clues only; do not return them as officialSources unless the source is also an official brand, manufacturer, supplier, or distributor page.',
             'Prefer official product pages, official spec sheets, official media kits, and official image CDN URLs.',
             'Return only valid JSON with keys summary, verifiedName, verifiedDescription, verifiedDetails, highResImages, brand, manufacturer, officialSources.',
             'verifiedDetails must be an array of concise product specifications.',

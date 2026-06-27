@@ -78,16 +78,6 @@ const mergeCandidates = (existing = [], incoming = [], key = 'value') => {
   });
 };
 
-const hasLookupData = (scannedProduct) =>
-  Boolean(
-    scannedProduct.nameCandidates?.length ||
-    scannedProduct.descriptionCandidates?.length ||
-    scannedProduct.detailsCandidates?.length ||
-    scannedProduct.imageCandidates?.length ||
-    scannedProduct.brand ||
-    scannedProduct.supplierSources?.length
-  );
-
 const applyLookupToScannedProduct = (scannedProduct, lookup) => {
   if (!lookup?.found) {
     return false;
@@ -103,6 +93,11 @@ const applyLookupToScannedProduct = (scannedProduct, lookup) => {
   scannedProduct.category = scannedProduct.category || lookup.category || '';
 
   return true;
+};
+
+const refreshLookupData = async (scannedProduct) => {
+  const lookup = await lookupBarcode(scannedProduct.barcode).catch(() => ({ found: false }));
+  return applyLookupToScannedProduct(scannedProduct, lookup);
 };
 
 const buildImportValues = (scannedProduct, values = {}) => ({
@@ -189,14 +184,11 @@ const scanProduct = asyncHandler(async (req, res) => {
   }).sort({ createdAt: -1 });
 
   if (duplicate) {
-    if (!hasLookupData(duplicate)) {
-      const lookup = await lookupBarcode(barcode).catch(() => ({ found: false }));
-      const enriched = applyLookupToScannedProduct(duplicate, lookup);
+    const enriched = await refreshLookupData(duplicate);
 
-      if (enriched) {
-        duplicate.updatedBy = req.user._id;
-        await duplicate.save();
-      }
+    if (enriched) {
+      duplicate.updatedBy = req.user._id;
+      await duplicate.save();
     }
 
     res.json({ scannedProduct: duplicate, duplicate: true });
@@ -314,6 +306,13 @@ const researchAiPrices = asyncHandler(async (req, res) => {
     throw new Error('AI API key is not configured in Settings');
   }
 
+  const enriched = await refreshLookupData(scannedProduct);
+
+  if (enriched) {
+    scannedProduct.updatedBy = req.user._id;
+    await scannedProduct.save();
+  }
+
   const apiKey = decryptSecret(settings.ai.apiKeyEncrypted);
   const research = await researchLebanesePrices({
     apiKey,
@@ -351,6 +350,13 @@ const verifyOfficialDetails = asyncHandler(async (req, res) => {
   if (!settings.ai?.apiKeyEncrypted) {
     res.status(400);
     throw new Error('AI API key is not configured in Settings');
+  }
+
+  const enriched = await refreshLookupData(scannedProduct);
+
+  if (enriched) {
+    scannedProduct.updatedBy = req.user._id;
+    await scannedProduct.save();
   }
 
   const apiKey = decryptSecret(settings.ai.apiKeyEncrypted);

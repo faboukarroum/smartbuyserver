@@ -78,11 +78,16 @@ const makeImageCandidate = (url, source, confidence = 0.8) => ({
 });
 
 const toDetails = (product, sourceName) => compact([
+  product.brands ? `Brand: ${product.brands}` : '',
+  product.manufacturing_places ? `Manufacturing places: ${product.manufacturing_places}` : '',
+  product.producer ? `Producer: ${product.producer}` : '',
   product.quantity ? `Quantity: ${product.quantity}` : '',
   product.packaging ? `Packaging: ${product.packaging}` : '',
   product.categories ? `Categories: ${product.categories}` : '',
   product.labels ? `Labels: ${product.labels}` : '',
   product.countries ? `Countries: ${product.countries}` : '',
+  product.origins ? `Origins: ${product.origins}` : '',
+  product.stores ? `Stores: ${product.stores}` : '',
   product.ingredients_text ? `Ingredients: ${product.ingredients_text}` : '',
   product.materials ? `Materials: ${product.materials}` : '',
 ])
