@@ -153,6 +153,14 @@ const scannedProductSchema = mongoose.Schema(
       type: String,
       default: '',
     },
+    officialVerificationSummary: {
+      type: String,
+      default: '',
+    },
+    officialVerifiedAt: {
+      type: Date,
+      default: null,
+    },
     notes: {
       type: String,
       default: '',

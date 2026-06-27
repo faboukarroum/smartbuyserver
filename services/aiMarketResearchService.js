@@ -80,6 +80,60 @@ const normalizePriceResults = (results = [], maxResults = 8) => {
     .slice(0, maxResults);
 };
 
+const normalizeTextCandidates = (items = [], source = 'Official supplier', confidence = 0.9) => {
+  if (!Array.isArray(items)) {
+    return [];
+  }
+
+  return items
+    .map((item) => {
+      if (typeof item === 'string') {
+        return { value: item.trim(), source, confidence };
+      }
+
+      return {
+        value: String(item.value || item.text || '').trim(),
+        source: String(item.source || source).trim(),
+        confidence: normalizeConfidence(item.confidence ?? confidence),
+      };
+    })
+    .filter((item) => item.value);
+};
+
+const normalizeImageCandidates = (items = [], source = 'Official supplier') => {
+  if (!Array.isArray(items)) {
+    return [];
+  }
+
+  return items
+    .map((item) => {
+      if (typeof item === 'string') {
+        return { url: item.trim(), source, confidence: 0.9 };
+      }
+
+      return {
+        url: String(item.url || item.imageUrl || '').trim(),
+        source: String(item.source || source).trim(),
+        confidence: normalizeConfidence(item.confidence ?? 0.9),
+      };
+    })
+    .filter((item) => item.url && /^https?:\/\//i.test(item.url));
+};
+
+const normalizeSources = (items = [], fallbackName = 'Official supplier') => {
+  if (!Array.isArray(items)) {
+    return [];
+  }
+
+  return items
+    .map((item) => ({
+      name: String(item.name || fallbackName).trim(),
+      url: String(item.url || '').trim(),
+      notes: String(item.notes || 'Official supplier verification').trim(),
+    }))
+    .filter((item) => item.url && /^https?:\/\//i.test(item.url));
+};
+
 const callOpenAI = async ({ apiKey, body }) => {
   const response = await fetch(OPENAI_RESPONSES_URL, {
     method: 'POST',
@@ -175,7 +229,83 @@ const researchLebanesePrices = async ({ apiKey, aiSettings, scannedProduct }) =>
   };
 };
 
+const verifyOfficialSupplierDetails = async ({ apiKey, aiSettings, scannedProduct }) => {
+  const details = (scannedProduct.detailsCandidates || []).map((item) => item.value).filter(Boolean);
+  const names = (scannedProduct.nameCandidates || []).map((item) => item.value).filter(Boolean);
+  const imageUrls = (scannedProduct.imageCandidates || []).map((item) => item.url).filter(Boolean);
+
+  const prompt = {
+    barcode: scannedProduct.barcode,
+    productNames: names,
+    brand: scannedProduct.brand,
+    manufacturer: scannedProduct.manufacturer,
+    category: scannedProduct.category,
+    existingDetails: details,
+    existingImageUrls: imageUrls,
+    languages: aiSettings.languages || 'both',
+    preferredDomains: aiSettings.preferredDomains || [],
+    blockedDomains: aiSettings.blockedDomains || [],
+  };
+
+  const data = await callOpenAI({
+    apiKey,
+    body: {
+      model: aiSettings.model || 'gpt-4.1-mini',
+      tools: [{ type: 'web_search', external_web_access: true }],
+      tool_choice: 'required',
+      input: [
+        {
+          role: 'system',
+          content: [
+            'You verify product catalog data only against official supplier, official brand, official manufacturer, or official distributor pages.',
+            'Do not use marketplace listings, reseller pages, social media posts, review blogs, or generic barcode databases as official verification sources.',
+            'Prefer official product pages, official spec sheets, official media kits, and official image CDN URLs.',
+            'Return only valid JSON with keys summary, verifiedName, verifiedDescription, verifiedDetails, highResImages, brand, manufacturer, officialSources.',
+            'verifiedDetails must be an array of concise product specifications.',
+            'highResImages must contain direct http/https image URLs when possible and should prefer high-resolution official images.',
+            'officialSources must be an array of objects with name, url, notes.',
+          ].join(' '),
+        },
+        {
+          role: 'user',
+          content: `Verify these scanned product details against official supplier sources and find official high-resolution product images. Data: ${JSON.stringify(prompt)}`,
+        },
+      ],
+    },
+  });
+
+  const text = extractResponseText(data);
+  const parsed = parseJsonText(text);
+  const nameCandidates = normalizeTextCandidates([parsed.verifiedName].filter(Boolean), 'Official supplier', 0.95);
+  const descriptionCandidates = normalizeTextCandidates([parsed.verifiedDescription].filter(Boolean), 'Official supplier', 0.9);
+  const detailsCandidates = normalizeTextCandidates(parsed.verifiedDetails, 'Official supplier', 0.9);
+  const imageCandidates = normalizeImageCandidates(parsed.highResImages, 'Official supplier');
+  const supplierSources = normalizeSources(parsed.officialSources, parsed.brand || parsed.manufacturer || 'Official supplier');
+
+  if (
+    nameCandidates.length === 0 &&
+    descriptionCandidates.length === 0 &&
+    detailsCandidates.length === 0 &&
+    imageCandidates.length === 0 &&
+    supplierSources.length === 0
+  ) {
+    throw new Error('No official supplier details or high-resolution images were found');
+  }
+
+  return {
+    summary: String(parsed.summary || 'Official supplier verification completed.').trim(),
+    nameCandidates,
+    descriptionCandidates,
+    detailsCandidates,
+    imageCandidates,
+    supplierSources,
+    brand: String(parsed.brand || '').trim(),
+    manufacturer: String(parsed.manufacturer || '').trim(),
+  };
+};
+
 module.exports = {
   researchLebanesePrices,
   testOpenAIConnection,
+  verifyOfficialSupplierDetails,
 };

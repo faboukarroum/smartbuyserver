@@ -5,6 +5,7 @@ const {
   getScannedProducts,
   getScannedProductById,
   updateScannedProduct,
+  verifyOfficialDetails,
   researchAiPrices,
   importScannedProduct,
   rejectScannedProduct,
@@ -16,6 +17,7 @@ router.use(protect, admin);
 router.route('/').get(getScannedProducts);
 router.route('/scan').post(scanProduct);
 router.route('/:id').get(getScannedProductById).put(updateScannedProduct);
+router.route('/:id/verify-official-details').post(verifyOfficialDetails);
 router.route('/:id/research-ai-prices').post(researchAiPrices);
 router.route('/:id/import').post(importScannedProduct);
 router.route('/:id/reject').post(rejectScannedProduct);

@@ -3,7 +3,7 @@ const ScannedProduct = require('../models/ScannedProduct');
 const Product = require('../models/Product');
 const { decryptSecret } = require('../utils/aiSettingsCrypto');
 const { getSettingsDocumentWithSecret } = require('./settingsController');
-const { researchLebanesePrices } = require('../services/aiMarketResearchService');
+const { researchLebanesePrices, verifyOfficialSupplierDetails } = require('../services/aiMarketResearchService');
 const { lookupBarcode } = require('../services/barcodeLookupService');
 
 const normalizeBarcode = (value) => String(value || '').replace(/\D/g, '').trim();
@@ -330,6 +330,51 @@ const researchAiPrices = asyncHandler(async (req, res) => {
   res.json(updatedScannedProduct);
 });
 
+// @desc    Verify scanned product details against official supplier sources
+// @route   POST /api/admin/scanned-products/:id/verify-official-details
+// @access  Private/Admin
+const verifyOfficialDetails = asyncHandler(async (req, res) => {
+  const scannedProduct = await ScannedProduct.findById(req.params.id);
+
+  if (!scannedProduct) {
+    res.status(404);
+    throw new Error('Scanned product not found');
+  }
+
+  const settings = await getSettingsDocumentWithSecret();
+
+  if (!settings.ai?.enabled) {
+    res.status(400);
+    throw new Error('AI integration is disabled in Settings');
+  }
+
+  if (!settings.ai?.apiKeyEncrypted) {
+    res.status(400);
+    throw new Error('AI API key is not configured in Settings');
+  }
+
+  const apiKey = decryptSecret(settings.ai.apiKeyEncrypted);
+  const verification = await verifyOfficialSupplierDetails({
+    apiKey,
+    aiSettings: settings.ai,
+    scannedProduct,
+  });
+
+  scannedProduct.nameCandidates = mergeCandidates(scannedProduct.nameCandidates, verification.nameCandidates);
+  scannedProduct.descriptionCandidates = mergeCandidates(scannedProduct.descriptionCandidates, verification.descriptionCandidates);
+  scannedProduct.detailsCandidates = mergeCandidates(scannedProduct.detailsCandidates, verification.detailsCandidates);
+  scannedProduct.imageCandidates = mergeCandidates(scannedProduct.imageCandidates, verification.imageCandidates, 'url');
+  scannedProduct.supplierSources = mergeCandidates(scannedProduct.supplierSources, verification.supplierSources, 'url');
+  scannedProduct.brand = scannedProduct.brand || verification.brand || '';
+  scannedProduct.manufacturer = scannedProduct.manufacturer || verification.manufacturer || '';
+  scannedProduct.officialVerificationSummary = verification.summary;
+  scannedProduct.officialVerifiedAt = new Date();
+  scannedProduct.updatedBy = req.user._id;
+
+  const updatedScannedProduct = await scannedProduct.save();
+  res.json(updatedScannedProduct);
+});
+
 // @desc    Import staged scanned product into live products
 // @route   POST /api/admin/scanned-products/:id/import
 // @access  Private/Admin
@@ -419,6 +464,7 @@ module.exports = {
   getScannedProducts,
   getScannedProductById,
   updateScannedProduct,
+  verifyOfficialDetails,
   researchAiPrices,
   importScannedProduct,
   rejectScannedProduct,
