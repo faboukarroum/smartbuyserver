@@ -29,12 +29,14 @@ const userRoutes = require('./routes/userRoutes');
 const orderRoutes = require('./routes/orderRoutes');
 const uploadRoutes = require('./routes/uploadRoutes');
 const settingsRoutes = require('./routes/settingsRoutes');
+const scannedProductRoutes = require('./routes/scannedProductRoutes');
 
 app.use('/api/products', productRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/uploads', uploadRoutes);
 app.use('/api/settings', settingsRoutes);
+app.use('/api/admin/scanned-products', scannedProductRoutes);
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Error Middleware

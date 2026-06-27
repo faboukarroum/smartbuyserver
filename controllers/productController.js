@@ -88,6 +88,11 @@ const createProduct = asyncHandler(async (req, res) => {
     stock,
     isNew,
     details,
+    barcode,
+    brand,
+    manufacturer,
+    verificationSource,
+    verifiedAt,
   } = req.body;
 
   const galleryImages = Array.isArray(images) ? images.filter(Boolean) : [];
@@ -105,6 +110,11 @@ const createProduct = asyncHandler(async (req, res) => {
     description,
     isNew,
     details,
+    barcode,
+    brand,
+    manufacturer,
+    verificationSource,
+    verifiedAt,
   });
 
   const createdProduct = await product.save();
@@ -126,6 +136,11 @@ const updateProduct = asyncHandler(async (req, res) => {
     stock,
     isNew,
     details,
+    barcode,
+    brand,
+    manufacturer,
+    verificationSource,
+    verifiedAt,
   } = req.body;
 
   const product = await Product.findById(req.params.id);
@@ -146,6 +161,11 @@ const updateProduct = asyncHandler(async (req, res) => {
     product.stock = stock !== undefined ? stock : product.stock;
     product.isNew = isNew !== undefined ? isNew : product.isNew;
     product.details = details !== undefined ? details : product.details;
+    product.barcode = barcode !== undefined ? barcode : product.barcode;
+    product.brand = brand !== undefined ? brand : product.brand;
+    product.manufacturer = manufacturer !== undefined ? manufacturer : product.manufacturer;
+    product.verificationSource = verificationSource !== undefined ? verificationSource : product.verificationSource;
+    product.verifiedAt = verifiedAt !== undefined ? verifiedAt : product.verifiedAt;
 
     const updatedProduct = await product.save();
     res.json(updatedProduct);

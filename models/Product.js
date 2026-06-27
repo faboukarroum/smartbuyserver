@@ -41,6 +41,27 @@ const productSchema = mongoose.Schema(
       default: false,
     },
     details: [String],
+    barcode: {
+      type: String,
+      default: '',
+      index: true,
+    },
+    brand: {
+      type: String,
+      default: '',
+    },
+    manufacturer: {
+      type: String,
+      default: '',
+    },
+    verificationSource: {
+      type: String,
+      default: '',
+    },
+    verifiedAt: {
+      type: Date,
+      default: null,
+    },
   },
   {
     timestamps: true,
